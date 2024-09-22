@@ -475,6 +475,7 @@ def _call_ort(
     )
 
     try:
+        # TODO use CUDA provider if args are CUDA tensors
         session = ort.InferenceSession(
             model.SerializeToString(), providers=("CPUExecutionProvider",)
         )
@@ -486,7 +487,7 @@ def _call_ort(
         ) from e
 
     try:
-        result = session.run(None, session_run_input)
+        result = session.run_with_ort_values(None, session_run_input)
     except (RuntimeError, Fail) as e:
         raise EagerModeError(
             f"Unable to execute model operator {schema.name!r} due to {e!r}"
@@ -498,7 +499,7 @@ def _call_ort(
         ) from e
 
     # Map ORT output values to the onnxscript representation-type.
-    return [_numpy_to_onnxscript_value(x) for x in result]
+    return [tensor.Tensor(x) for x in result]
 
 
 def _schema_id(schema: onnx.defs.OpSchema) -> tuple[str, str, int]:
