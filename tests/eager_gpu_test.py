@@ -4,37 +4,53 @@ import onnxruntime as ort
 import time
 import matplotlib.pyplot as plt
 import cupy as cp
-
+import itertools
 
 def test_onnx_gpu_speed():
     # you need to uninstall onnxruntime and install onnxruntime-gpu to run this test
 
-    methods = ["onnx gpu", "onnx cpu", "numpy", "cupy"]
+    methods = [ "cupy","onnx cpu", "onnx gpu","numpy"]
     min_durations: dict[str, list[float]] = {}
-    num_elements=[n*n for n in  [10,100,500,1000,2000,5000]]
-    for n in num_elements:       
+    #num_elements=[n*n for n in  [10,100,500,1000,2000,5000, 7000]]
+    num_trials_out= 5
+    num_trials_in= 5
+    num_elements_min = 100
+    num_elements_max =1000000
+    n_steps = 30
+    # get n_steps values between num_elements_min and num_elements_max uniformly spaced on a log scale
+    num_elements = np.logspace(np.log10(num_elements_min), np.log10(num_elements_max), num=n_steps, endpoint=True, base=10.0, dtype=int)
+    durations_ms = {}
+  
+    a_method={}
+     
+    for n, method in itertools.product(num_elements, methods):
         np_array = np.ones((n), dtype=np.float32) 
-        a: Tensor|np.ndarray 
-        for method in methods:
-            if method == "onnx gpu": 
-                a = Tensor(np_array, device_type="cuda", device_id=0)
-            elif method == "onnx cpu":
-                a = Tensor(np_array, device_type="cpu", device_id=0)
-            elif method == "numpy":
-                a = np_array
-            elif method == "cupy":
-                a = cp.asarray(np_array)
-            else:
-                raise ValueError(f"Unknown method {method}")
-            durations_ms = []
-            for _ in range(10):        
-                start=time.perf_counter()
-                b=a*2
-                durations_ms.append((time.perf_counter()-start)*1000)
-            if method not in min_durations:
-                min_durations[method] = []
-            min_durations[method].append(min(durations_ms))
-            print(f"{method} min duration = {min(durations_ms)} ms")
+        if method == "onnx gpu": 
+            a = Tensor(np_array, device_type="cuda", device_id=0)
+        elif method == "onnx cpu":
+            a = Tensor(np_array, device_type="cpu", device_id=0)
+        elif method == "numpy":
+            a = np_array
+        elif method == "cupy":
+            a = cp.asarray(np_array)
+        else:
+            raise ValueError(f"Unknown method {method}")  
+        a_method[(method, n)] =a
+
+    for trial_out, n, method, trial_in in itertools.product(  range(num_trials_out), num_elements, methods, range(num_trials_in)):
+        a = a_method[(method, n)]
+        start = time.perf_counter()
+        b = a * a
+        duration = (time.perf_counter() - start) * 1000
+        durations_ms[(trial_out, n, method, trial_in )] = duration
+
+    # get the minimum duration for each method and number of elements
+    for method in methods:
+        min_durations[method]=[]
+        for n in num_elements:
+            durations = [durations_ms[(trial_out, n, method, trial_in)] for trial_in, trial_out in itertools.product(range(num_trials_out),range(num_trials_in))]
+            min_durations[method].append(min(durations))
+        
     for method in methods:
         plt.loglog(num_elements,min_durations[method],label=method)
     plt.xlabel("number of elements")

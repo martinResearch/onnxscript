@@ -72,10 +72,10 @@ class Tensor:
     def __repr__(self) -> str:
         if self.size <10:
             np_array = self.value.numpy()
-            return f"{self.__class__.__name__}({str(np_array)})"
+            return f"{self.__class__.__name__}({str(np_array)}, device={self.value.device_name()})"
         else:
             # Display only the shape and dtype of the tensor
-            return f"{self.__class__.__name__}(shape={self.shape}, dtype={self.dtype})"
+            return f"{self.__class__.__name__}(shape={self.shape}, dtype={self.dtype}, device={self.value.device_name()})"
 
     def __bool__(self) -> bool:
         return self._opset.Cast(self, to=TensorProto.BOOL)
