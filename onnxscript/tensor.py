@@ -11,32 +11,43 @@ from onnx import TensorProto
 
 from onnxscript import onnx_opset
 from onnxscript._internal import autocast
-
+from onnxscript._internal.utils import ort_type_to_np_dtype
+import onnxruntime as ort
+import math
 
 class Tensor:
     """An implementation of ONNX Tensors, based on a wrapper around numpy arrays.
     Serves to define overloaded ops with an ONNX/ONNXScript semantics.
     """
 
-    def __init__(self, nparray: Optional[np.ndarray], opset=None):
-        if nparray is not None and not isinstance(nparray, np.ndarray):
-            raise TypeError(
-                f"Unexpected type {type(nparray)}. It must be a numpy array or None."
-            )
+    def __init__(self, value: Optional[ort.OrtValue|np.ndarray], opset=None, device_type=None, device_id=None):
 
-        self._nparray = nparray
+        if isinstance(value, np.ndarray):
+            if device_type is None:
+                self._ortvalue = ort.OrtValue.ortvalue_from_numpy(value)
+            else:
+                assert device_id is not None, "device_id must be provided if device_type is provided"
+                self._ortvalue = ort.OrtValue.ortvalue_from_numpy(value, device_type, device_id)
+        elif isinstance(value, ort.OrtValue):
+            self._ortvalue = value
+        elif value is None:
+            self._ortvalue = None
+        else:
+          raise TypeError(
+                f"Unexpected type {type(value)}. It must be a OrtValue, numpy array or None."
+            )
         # FIXME(justinhuby): Create a better way to determine the opset version
         self._opset: Any = opset or onnx_opset.opset18
 
     @property
-    def value(self) -> np.ndarray:
-        if self._nparray is None:
+    def value(self) -> ort.OrtValue:
+        if self._ortvalue is None:
             raise ValueError("Tensor does not have a value.")
-        return self._nparray
+        return self._ortvalue
 
     @property
     def rank(self) -> int:
-        return len(self.value.shape)
+        return len(self.shape)
 
     @property
     def is_scalar(self) -> bool:
@@ -44,32 +55,42 @@ class Tensor:
 
     @property
     def shape(self) -> tuple[int, ...]:
-        return self.value.shape
+        return self.value.shape()
 
     @property
     def dtype(self) -> np.dtype:
-        return self.value.dtype
+        return  ort_type_to_np_dtype(self.value.data_type())
 
     @property
     def onnx_dtype(self) -> int:
         return onnx.helper.np_dtype_to_tensor_dtype(self.dtype)
 
+    @property
+    def size(self):
+        return math.prod(self.shape)
+    
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.value!r})"
+        if self.size <10:
+            np_array = self.value.numpy()
+            return f"{self.__class__.__name__}({str(np_array)}, device={self.value.device_name()})"
+        else:
+            # Display only the shape and dtype of the tensor
+            return f"{self.__class__.__name__}(shape={self.shape}, dtype={self.dtype}, device={self.value.device_name()})"
 
     def __bool__(self) -> bool:
-        return bool(self.value)
+        return self._opset.Cast(self, to=TensorProto.BOOL)
 
     def __int__(self) -> int:
-        return int(self.value)
+        self._opset.Cast(self, to=TensorProto.INT64)
 
     def __float__(self) -> float:
-        return float(self.value)
+        self._opset.Cast(self, to=TensorProto.FLOAT)
 
     def __len__(self) -> int:
         return self.shape[0]
 
     def __index__(self) -> int:
+        raise TypeError("Not implemented.")
         return self.value.__index__()
 
     def __getitem__(self, index):

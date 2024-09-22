@@ -30,7 +30,7 @@ from onnxscript._internal import autocast, param_manipulation, utils
 UserModeValue: TypeAlias = Union[Optional[np.ndarray], Sequence["UserModeValue"]]
 
 EagerModeValue: TypeAlias = Union[Optional["tensor.Tensor"], Sequence["EagerModeValue"]]
-
+from functools import lru_cache
 ExtendedModeValue: TypeAlias = Union[
     Optional["tensor.Tensor"],
     Sequence["ExtendedModeValue"],
@@ -455,6 +455,11 @@ def _prepare_model_and_inputs_for_eager(
     return model, session_run_input, inputs
 
 
+@lru_cache(maxsize=100)
+def create_inference_session(model_str:str, providers:Sequence[str]) -> Any:
+    import onnxruntime as ort  # pylint: disable=import-outside-toplevel
+    return ort.InferenceSession(model_str, providers=providers)
+
 def _call_ort(
     schema: onnx.defs.OpSchema,
     args: Sequence[Any],
@@ -475,9 +480,9 @@ def _call_ort(
     )
 
     try:
-        session = ort.InferenceSession(
-            model.SerializeToString(), providers=("CPUExecutionProvider",)
-        )
+        # TODO use CUDA provider if args are CUDA tensors
+        model_str = model.SerializeToString()
+        session = create_inference_session(model_str, providers=("CUDAExecutionProvider",))
     except (Fail, InvalidGraph, InvalidArgument) as e:
         raise EagerModeError(
             f"Unable to create onnxruntime InferenceSession "
@@ -486,7 +491,37 @@ def _call_ort(
         ) from e
 
     try:
-        result = session.run(None, session_run_input)
+        # for some run_with_ort_values copy the output to the CPU
+        # result = session.run_with_ort_values(None, session_run_input)
+        io_binding = session.io_binding()
+        # bind the inputs
+        device_name = None
+        # TODO I cannot get the device_id from the ortvalue so assuming on device 0
+        device_id = 0
+        for name, value in session_run_input.items(): 
+            if device_name is None:
+                device_name = value.device_name()            
+            else:
+                if device_name != value.device_name():
+                    raise RuntimeError("All inputs must be on the same device") 
+            io_binding.bind_input(
+                name=name, 
+                device_type=value.device_name(),
+                device_id=0, 
+                element_type=utils.ort_type_to_np_dtype(value.data_type()), 
+                shape=value.shape(), 
+                buffer_ptr=value.data_ptr()
+            )
+
+        # bind the outputs
+        for sess_output in session.get_outputs():
+            io_binding.bind_output(sess_output.name, device_name, device_id)
+        # execute the model
+        session.run_with_iobinding(io_binding)
+
+        # synchronize the outputs
+        io_binding.synchronize_outputs()
+        result = io_binding.get_outputs()  
     except (RuntimeError, Fail) as e:
         raise EagerModeError(
             f"Unable to execute model operator {schema.name!r} due to {e!r}"
@@ -498,7 +533,7 @@ def _call_ort(
         ) from e
 
     # Map ORT output values to the onnxscript representation-type.
-    return [_numpy_to_onnxscript_value(x) for x in result]
+    return [tensor.Tensor(x) for x in result]
 
 
 def _schema_id(schema: onnx.defs.OpSchema) -> tuple[str, str, int]:

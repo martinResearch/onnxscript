@@ -10,7 +10,7 @@ import onnx
 import onnx.helper
 
 from onnxscript import tensor
-
+import onnxruntime as ort
 
 def external_tensor(
     name: str,
@@ -62,11 +62,33 @@ def external_tensor(
     return tensor_proto
 
 
+def ort_type_to_np_dtype(ort_type: str) -> np.dtype:
+    types_map={
+        "tensor(float)": np.dtype("float32"),
+        "tensor(double)": np.dtype("float64"),
+        "tensor(int32)": np.dtype("int32"),
+        "tensor(int64)": np.dtype("int64"),
+        "tensor(bool)": np.dtype("bool"),
+        "tensor(uint8)": np.dtype("uint8"),
+        "tensor(uint16)": np.dtype("uint16"),
+        "tensor(int8)": np.dtype("int8"),
+        "tensor(int16)": np.dtype("int16"),
+        "tensor(complex64)": np.dtype("complex64"),
+        "tensor(complex128)": np.dtype("complex128"),
+        "tensor(float16)": np.dtype("float16"),
+        "tensor(bfloat16)": np.dtype("bfloat16"),        
+    }
+    return types_map[ort_type]
+
 def value_to_type_proto(val):
     """Return the ONNX type of a python-value."""
     if isinstance(val, (np.ndarray, tensor.Tensor)):
         elem_type = onnx.helper.np_dtype_to_tensor_dtype(val.dtype)
         shape = val.shape
+        return onnx.helper.make_tensor_type_proto(elem_type, shape)
+    if isinstance(val, ort.OrtValue):
+        elem_type = onnx.helper.np_dtype_to_tensor_dtype(ort_type_to_np_dtype(val.data_type()))
+        shape = val.shape()
         return onnx.helper.make_tensor_type_proto(elem_type, shape)
     if isinstance(val, int):
         return onnx.helper.make_tensor_type_proto(onnx.TensorProto.INT32, [])
