@@ -1,7 +1,7 @@
 setuptools>=61.0.0
 numpy<2.0
 onnx-weekly>=1.17.0.dev20240325
-onnxruntime>=1.17.0
+onnxruntime-gpu==1.16.3
 typing_extensions
 rich>=13.7.1
 

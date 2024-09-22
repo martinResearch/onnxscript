@@ -30,7 +30,7 @@ from onnxscript._internal import autocast, param_manipulation, utils
 UserModeValue: TypeAlias = Union[Optional[np.ndarray], Sequence["UserModeValue"]]
 
 EagerModeValue: TypeAlias = Union[Optional["tensor.Tensor"], Sequence["EagerModeValue"]]
-
+from functools import lru_cache
 ExtendedModeValue: TypeAlias = Union[
     Optional["tensor.Tensor"],
     Sequence["ExtendedModeValue"],
@@ -455,6 +455,11 @@ def _prepare_model_and_inputs_for_eager(
     return model, session_run_input, inputs
 
 
+@lru_cache(maxsize=100)
+def create_inference_session(model_str:str, providers:Sequence[str]) -> Any:
+    import onnxruntime as ort  # pylint: disable=import-outside-toplevel
+    return ort.InferenceSession(model_str, providers=providers)
+
 def _call_ort(
     schema: onnx.defs.OpSchema,
     args: Sequence[Any],
@@ -476,9 +481,8 @@ def _call_ort(
 
     try:
         # TODO use CUDA provider if args are CUDA tensors
-        session = ort.InferenceSession(
-            model.SerializeToString(), providers=("CPUExecutionProvider",)
-        )
+        model_str = model.SerializeToString()
+        session = create_inference_session(model_str, providers=("CUDAExecutionProvider",))
     except (Fail, InvalidGraph, InvalidArgument) as e:
         raise EagerModeError(
             f"Unable to create onnxruntime InferenceSession "

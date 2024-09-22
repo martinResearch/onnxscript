@@ -20,13 +20,22 @@ class Tensor:
     Serves to define overloaded ops with an ONNX/ONNXScript semantics.
     """
 
-    def __init__(self, ortvalue: Optional[ort.OrtValue], opset=None):
-        if ortvalue is not None and not isinstance(ortvalue, ort.OrtValue):
-            raise TypeError(
-                f"Unexpected type {type(ortvalue)}. It must be a numpy array or None."
-            )
+    def __init__(self, value: Optional[ort.OrtValue|np.ndarray], opset=None, device_type=None, device_id=None):
 
-        self._ortvalue = ortvalue
+        if isinstance(value, np.ndarray):
+            if device_type is None:
+                self._ortvalue = ort.OrtValue.ortvalue_from_numpy(value)
+            else:
+                assert device_id is not None, "device_id must be provided if device_type is provided"
+                self._ortvalue = ort.OrtValue.ortvalue_from_numpy(value, device_type, device_id)
+        elif isinstance(value, ort.OrtValue):
+            self._ortvalue = value
+        elif value is None:
+            self._ortvalue = None
+        else:
+          raise TypeError(
+                f"Unexpected type {type(value)}. It must be a OrtValue, numpy array or None."
+            )
         # FIXME(justinhuby): Create a better way to determine the opset version
         self._opset: Any = opset or onnx_opset.opset18
 
