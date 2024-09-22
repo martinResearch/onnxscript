@@ -3,13 +3,13 @@ import numpy as np
 import onnxruntime as ort
 import time
 import matplotlib.pyplot as plt
-
+import cupy as cp
 
 
 def test_onnx_gpu_speed():
     # you need to uninstall onnxruntime and install onnxruntime-gpu to run this test
 
-    methods = ["onnx gpu", "onnx cpu", "numpy"]
+    methods = ["onnx gpu", "onnx cpu", "numpy", "cupy"]
     min_durations: dict[str, list[float]] = {}
     num_elements=[n*n for n in  [10,100,500,1000,2000,5000]]
     for n in num_elements:       
@@ -22,6 +22,10 @@ def test_onnx_gpu_speed():
                 a = Tensor(np_array, device_type="cpu", device_id=0)
             elif method == "numpy":
                 a = np_array
+            elif method == "cupy":
+                a = cp.asarray(np_array)
+            else:
+                raise ValueError(f"Unknown method {method}")
             durations_ms = []
             for _ in range(10):        
                 start=time.perf_counter()

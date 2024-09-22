@@ -4,6 +4,7 @@ onnx-weekly>=1.17.0.dev20240325
 onnxruntime-gpu==1.16.3
 typing_extensions
 rich>=13.7.1
+cupy-cuda11x==12.3
 
 # Docs site
 furo
