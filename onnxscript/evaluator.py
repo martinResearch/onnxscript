@@ -447,7 +447,8 @@ def _prepare_model_and_inputs_for_eager(
         opset_imports=[opset_id],
         ir_version=irbuilder.select_ir_version(schema.since_version, domain=schema.domain),
     )
-    model = onnx.shape_inference.infer_shapes(model)
+    # Does not seem required
+    # model = onnx.shape_inference.infer_shapes(model)
 
     session_run_input = {name: arg for name, arg in zip(inputs, args) if name != ""}
     session_run_input.update(implicit_args)

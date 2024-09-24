@@ -12,6 +12,7 @@ import onnx.helper
 from onnxscript import tensor
 import onnxruntime as ort
 
+
 def external_tensor(
     name: str,
     data_type: int,
@@ -62,23 +63,39 @@ def external_tensor(
     return tensor_proto
 
 
+ort_type_to_np_dtype_types_map = {
+    "tensor(float)": np.dtype("float32"),
+    "tensor(double)": np.dtype("float64"),
+    "tensor(int32)": np.dtype("int32"),
+    "tensor(int64)": np.dtype("int64"),
+    "tensor(bool)": np.dtype("bool"),
+    "tensor(uint8)": np.dtype("uint8"),
+    "tensor(uint16)": np.dtype("uint16"),
+    "tensor(int8)": np.dtype("int8"),
+    "tensor(int16)": np.dtype("int16"),
+    "tensor(complex64)": np.dtype("complex64"),
+    "tensor(complex128)": np.dtype("complex128"),
+    "tensor(float16)": np.dtype("float16"),
+}
+
+
 def ort_type_to_np_dtype(ort_type: str) -> np.dtype:
-    types_map={
-        "tensor(float)": np.dtype("float32"),
-        "tensor(double)": np.dtype("float64"),
-        "tensor(int32)": np.dtype("int32"),
-        "tensor(int64)": np.dtype("int64"),
-        "tensor(bool)": np.dtype("bool"),
-        "tensor(uint8)": np.dtype("uint8"),
-        "tensor(uint16)": np.dtype("uint16"),
-        "tensor(int8)": np.dtype("int8"),
-        "tensor(int16)": np.dtype("int16"),
-        "tensor(complex64)": np.dtype("complex64"),
-        "tensor(complex128)": np.dtype("complex128"),
-        "tensor(float16)": np.dtype("float16"),
-        "tensor(bfloat16)": np.dtype("bfloat16"),        
-    }
-    return types_map[ort_type]
+    return ort_type_to_np_dtype_types_map[ort_type]
+
+ort_type_to_tensor_dtype_map={
+    "tensor(float)": onnx.TensorProto.FLOAT,
+    "tensor(double)": onnx.TensorProto.DOUBLE,
+    "tensor(int32)": onnx.TensorProto.INT32,
+    "tensor(int64)": onnx.TensorProto.INT64,
+    "tensor(bool)": onnx.TensorProto.BOOL,
+    "tensor(uint8)": onnx.TensorProto.UINT8,
+    "tensor(uint16)": onnx.TensorProto.UINT16,
+    "tensor(int8)": onnx.TensorProto.INT8,
+    "tensor(int16)": onnx.TensorProto.INT16,
+    "tensor(complex64)": onnx.TensorProto.COMPLEX64,
+    "tensor(complex128)": onnx.TensorProto.COMPLEX128,
+    "tensor(float16)": onnx.TensorProto.FLOAT16,
+}
 
 def value_to_type_proto(val):
     """Return the ONNX type of a python-value."""
@@ -87,7 +104,7 @@ def value_to_type_proto(val):
         shape = val.shape
         return onnx.helper.make_tensor_type_proto(elem_type, shape)
     if isinstance(val, ort.OrtValue):
-        elem_type = onnx.helper.np_dtype_to_tensor_dtype(ort_type_to_np_dtype(val.data_type()))
+        elem_type = ort_type_to_tensor_dtype_map[val.data_type()]
         shape = val.shape()
         return onnx.helper.make_tensor_type_proto(elem_type, shape)
     if isinstance(val, int):
